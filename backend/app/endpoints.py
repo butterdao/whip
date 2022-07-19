@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import asdict, dataclass
+from json import loads
 from typing import Iterable, Literal, TypeVar, Union
 
 import dateutil
@@ -21,6 +22,7 @@ from .treasury import (
 class PortfolioAsset:
     allocation: float
     volatility: float
+    metrics: dict[str, float]
     risk_contribution: float
 
 
@@ -54,13 +56,20 @@ class Portfolio:
 
         assets = {
             a.token_symbol: PortfolioAsset(
-                allocation=a.balance_usd / treasury.usd_total,
-                volatility=None
-                if histprices[a.token_symbol]["std_dev"].mean() is NaN
-                else histprices[a.token_symbol]["std_dev"].mean(),
+                allocation=a.balance / treasury.usd_total,
+                metrics={}
+                if histprices[a.token_symbol][["std_dev", "returns"]].empty
+                else loads(
+                    histprices[a.token_symbol][["std_dev", "returns"]].to_json(
+                        orient="index", date_format="iso"
+                    )
+                ),
                 risk_contribution=a.risk_contribution
                 if hasattr(a, "risk_contribution")
                 else None,
+                volatility=None
+                if histprices[a.token_symbol]["std_dev"].mean() is NaN
+                else histprices[a.token_symbol]["std_dev"].mean(),
             )
             for a in treasury.assets
         }

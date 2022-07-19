@@ -11,4 +11,4 @@ def make_hist_price_series(
         (price.value for price in prices),
         index=pd.Index((price.timestamp for price in prices), name="timestamp"),
         name=f"{token_symbol} historical price",
-    )
+    ).sort_index()
