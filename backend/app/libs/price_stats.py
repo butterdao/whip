@@ -18,7 +18,7 @@ def make_returns_df(hist_values: pd.Series, column_name: str) -> pd.DataFrame:
     dataframe.returns.replace(-np.inf, 0, inplace=True)
     dataframe.returns.iloc[1:].replace(
         np.nan, 0, inplace=True
-    )  # Keep first nan (probly useless).
+    )  # Keep first nan (probably useless).
     dataframe["std_dev"] = dataframe.returns.rolling(ROLLING_WINDOW_DAYS).std(ddof=0)
     return dataframe
 
