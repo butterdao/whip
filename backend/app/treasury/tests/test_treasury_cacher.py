@@ -4,11 +4,11 @@ from fakeredis import FakeRedis
 from httpx import Client
 from pytest import MonkeyPatch, mark, raises
 
-from backend.app.libs.storage_helpers.storage_helpers import (
+from backend.app.treasury.storage_helpers.storage_helpers import (
     retrieve_treasuries_metadata,
     store_treasuries_metadata,
 )
-from backend.app.libs.storage_helpers.treasury_cacher import _get_treasury_list
+from backend.app.treasury.storage_helpers.treasury_cacher import _get_treasury_list
 
 from .conftest import (
     HTTPStatusError,

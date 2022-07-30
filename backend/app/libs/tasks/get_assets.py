@@ -12,13 +12,17 @@ from httpx import ReadTimeout
 
 from ... import db
 from ...celery_main import app as celery_app
-from ...treasury import build_treasury_with_assets
-from .. import price_stats
-from ..storage_helpers import (
-    get_and_store_treasury_list,
-    retrieve_treasuries_metadata,
+from ...token_whitelists import (
     store_and_get_covalent_pairs_whitelist,
     store_and_get_tokenlist_whitelist,
+)
+from ...treasury import (
+    build_treasury_with_assets,
+    get_and_store_treasury_list,
+    retrieve_treasuries_metadata,
+)
+from .. import price_stats
+from .storage_helpers import (
     store_asset_correlations,
     store_asset_hist_balance,
     store_asset_hist_performance,

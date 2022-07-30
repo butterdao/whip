@@ -6,7 +6,7 @@ import pandas as pd
 from .. import db
 from ..libs import pd_inter_calc, price_stats
 from ..libs import series as serieslib
-from ..libs.storage_helpers import maybe_populate_whitelist
+from ..token_whitelists import maybe_populate_whitelist
 from .adapters import bitquery
 from .adapters.covalent import get_token_transfers, get_treasury
 from .adapters.covalent_pricefeed import get_token_hist_price_covalent
