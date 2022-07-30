@@ -7,7 +7,10 @@ import redis
 from celery.utils.log import get_task_logger
 from httpx import AsyncClient, HTTPStatusError, RequestError, Timeout
 
-from .storage_helpers.storage_helpers import retrieve_token_whitelist, store_token_whitelist
+from .storage_helpers.storage_helpers import (
+    retrieve_token_whitelist,
+    store_token_whitelist,
+)
 
 COVALENT_KEY = os.getenv("COVALENT_KEY")
 COVALENT_POOLS_URL = "https://api.covalenthq.com/v1/{chain_id}/xy=k/{protocol}/pools/"
