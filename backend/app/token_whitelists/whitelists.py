@@ -16,7 +16,7 @@ COVALENT_KEY = os.getenv("COVALENT_KEY")
 COVALENT_POOLS_URL = "https://api.covalenthq.com/v1/{chain_id}/xy=k/{protocol}/pools/"
 
 
-async def get_single_covalent_pairs_page_response(
+async def get_single_covalent_pairs_page(
     client: AsyncClient, url_options: dict[str, Any]
 ) -> dict[str, Any]:
     async with client:
@@ -41,7 +41,7 @@ async def covalent_pairs_generator(
 ) -> Generator[dict[str, Any], None, None]:
     page_number = 0
     while True:
-        data = await get_single_covalent_pairs_page_response(
+        data = await get_single_covalent_pairs_page(
             AsyncClient(timeout=Timeout(10.0, read=60.0, connect=90.0)),
             {"chain_id": chain_id, "protocol": protocol, "page_number": page_number},
         )
