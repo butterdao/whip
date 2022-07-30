@@ -7,42 +7,51 @@ import redis
 from celery.utils.log import get_task_logger
 from httpx import AsyncClient, HTTPStatusError, RequestError, Timeout
 
-from .storage_helpers import retrieve_token_whitelist, store_token_whitelist
+from .storage_helpers.storage_helpers import retrieve_token_whitelist, store_token_whitelist
 
 COVALENT_KEY = os.getenv("COVALENT_KEY")
 COVALENT_POOLS_URL = "https://api.covalenthq.com/v1/{chain_id}/xy=k/{protocol}/pools/"
 
 
-async def _get_covalent_pair_list(
+async def get_single_covalent_pairs_page_response(
+    client: AsyncClient, url_options: dict[str, Any]
+) -> dict[str, Any]:
+    async with client:
+        resp = await client.get(
+            COVALENT_POOLS_URL.format(
+                chain_id=url_options["chain_id"], protocol=url_options["protocol"]
+            ),
+            params={
+                "quote-currency": "USD",
+                "format": "JSON",
+                "page-number": url_options["page_number"],
+                "page-size": 250,
+                "key": f"ckey_{COVALENT_KEY}",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()["data"]
+
+
+async def covalent_pairs_generator(
     protocol: str, chain_id=1
 ) -> Generator[dict[str, Any], None, None]:
     page_number = 0
     while True:
-        async with AsyncClient(
-            timeout=Timeout(10.0, read=60.0, connect=90.0)
-        ) as client:
-            resp = await client.get(
-                COVALENT_POOLS_URL.format(chain_id=chain_id, protocol=protocol),
-                params={
-                    "quote-currency": "USD",
-                    "format": "JSON",
-                    "page-number": page_number,
-                    "page-size": 250,
-                    "key": f"ckey_{COVALENT_KEY}",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()["data"]
-            for item in data["items"]:
-                yield item
-            if not data["pagination"]["has_more"]:
-                break
-            page_number += 1
+        data = await get_single_covalent_pairs_page_response(
+            AsyncClient(timeout=Timeout(10.0, read=60.0, connect=90.0)),
+            {"chain_id": chain_id, "protocol": protocol, "page_number": page_number},
+        )
+        for item in data["items"]:
+            yield item
+        if not data["pagination"]["has_more"]:
+            break
+        page_number += 1
 
 
 async def get_covalent_pair_list(protocol: str, chain_id=1) -> list[str]:
     whitelist = [
-        item["exchange"] async for item in _get_covalent_pair_list(protocol, chain_id)
+        item["exchange"] async for item in covalent_pairs_generator(protocol, chain_id)
     ]
     return whitelist
 
@@ -57,38 +66,47 @@ async def get_sushiswap_pairs_covalent() -> tuple[str, list[str]]:
     return (datasource, await get_covalent_pair_list("sushiswap"))
 
 
-async def get_tokenlists(token_list: str) -> list[str]:
+async def get_raw_tokenlist(tokenlist_url: str) -> list[dict[str, Any]]:
     timeout = Timeout(10.0, read=30.0, connect=15.0)
-    whitelist = []
     async with AsyncClient(timeout=timeout) as client:
-        resp = await client.get(token_list)
+        resp = await client.get(tokenlist_url)
         resp.raise_for_status()
+        return resp.json()["tokens"]
 
-        whitelist = [
-            token["address"] for token in resp.json()["tokens"] if token["chainId"] == 1
-        ]
-        # ensure native ETH is always whitelisted
-        whitelist.append("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
-    return whitelist
+
+def process_raw_tokenlist(raw_tokenlist: list[dict[str, Any]]):
+    tokenlist_whitelist = [
+        token["address"] for token in raw_tokenlist if token["chainId"] == 1
+    ]
+
+    tokenlist_whitelist.append("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+    return tokenlist_whitelist
+
+
+async def get_processed_tokenlists(tokenlist_url: str) -> list[str]:
+    raw_tokenlist = await get_raw_tokenlist(tokenlist_url)
+    processed_tokenlist_whitelist = process_raw_tokenlist(raw_tokenlist)
+
+    return processed_tokenlist_whitelist
 
 
 async def get_uniswap_pairs_tokenlists() -> tuple[str, list[str]]:
     path = "jab416171/uniswap-pairtokens/master/uniswap_pair_tokens.json"
     datasource = f"https://raw.githubusercontent.com/{path}"
-    return (datasource, await get_tokenlists(datasource))
+    return (datasource, await get_processed_tokenlists(datasource))
 
 
 async def get_coingecko_tokenlists() -> tuple[str, list[str]]:
     datasource = "https://tokens.coingecko.com/uniswap/all.json"
-    return (datasource, await get_tokenlists(datasource))
+    return (datasource, await get_processed_tokenlists(datasource))
 
 
 async def get_cmc_tokenlists() -> tuple[str, list[str]]:
     datasource = "https://api.coinmarketcap.com/data-api/v3/uniswap/all.json"
-    return (datasource, await get_tokenlists(datasource))
+    return (datasource, await get_processed_tokenlists(datasource))
 
 
-async def get_whitelists_from_apis(_getters: list[Coroutine]) -> list[str]:
+async def get_whitelists_from_apis(api_getters: list[Coroutine]) -> list[str]:
     def flatten_2d(input_list: list[list[Any]]) -> list[Any]:
         payload = []
         for sublist in input_list:
@@ -98,7 +116,7 @@ async def get_whitelists_from_apis(_getters: list[Coroutine]) -> list[str]:
     return flatten_2d(
         [
             whitelist
-            for _, whitelist in await gather(*[_getter() for _getter in _getters])
+            for _, whitelist in await gather(*[_getter() for _getter in api_getters])
         ]
     )
 
@@ -129,12 +147,12 @@ async def store_and_get_covalent_pairs_whitelist(
         latest_whitelist = await get_all_covalent_pairs()
     except (HTTPStatusError, RequestError, JSONDecodeError, KeyError) as error:
         logger = get_task_logger(__name__)
-        if error.__class__ in [HTTPStatusError, RequestError]:
-            logger.error("error receiving pairs from Covalent API", exc_info=error)
-            return []
-        logger.error(
-            "error processing pairs from Covalent API repsonse", exc_info=error
+        log_args = (
+            ("receiving pairs", "Covalent API")
+            if error.__class__ in [HTTPStatusError, RequestError]
+            else ("processing pairs", "Covalent API repsonse")
         )
+        logger.error("error %s from %s", *log_args, exc_info=error)
         return []
 
     store_token_whitelist(latest_whitelist, provider)

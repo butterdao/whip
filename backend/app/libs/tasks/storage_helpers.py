@@ -1,42 +1,6 @@
-import json
 from typing import Any, Union
 
 import redis
-
-CHAIN_ID = 1
-
-
-def store_treasuries_metadata(
-    provider: Union[redis.Redis, redis.client.Pipeline],
-    addresses: list[Union[str, None]],
-    chain_id: int = CHAIN_ID,
-):
-    payload = [
-        json.dumps({"address": address, "chain_id": chain_id}) for address in addresses
-    ]
-    provider.sadd("treasuries", *payload)
-
-
-def retrieve_treasuries_metadata(
-    provider: Union[redis.Redis, redis.client.Pipeline]
-) -> set[tuple[str, int]]:
-    treasuries = [
-        tuple(json.loads(t).values()) for t in provider.smembers("treasuries")
-    ]
-    return set(treasuries)
-
-
-def store_token_whitelist(
-    address: list[str], provider: Union[redis.Redis, redis.client.Pipeline]
-):
-    provider.sadd("whitelist", *address)
-
-
-def retrieve_token_whitelist(
-    provider: Union[redis.Redis, redis.client.Pipeline]
-) -> list[str]:
-    return provider.smembers("whitelist")
-
 
 BALANCES_KEY_TEMPLATE = "{address}_{symbol}"
 
